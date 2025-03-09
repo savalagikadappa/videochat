@@ -1,14 +1,10 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
-// https://vite.dev/config/
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  root: './frontend',  // If your Vite config and index.html are in the 'frontend' folder
   build: {
-    outDir: 'dist',  // Change if your output directory is different
-  }
-})
-
-
-
+    outDir: 'frontend/dist',  // Ensure this matches the folder where you want Vercel to look for built files
+  },
+});

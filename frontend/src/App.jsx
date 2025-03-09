@@ -2,10 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 import './App.css';
 
-const socket = io('http://localhost:3000', {
-  transports: ['websocket', 'polling'],
-  reconnection: true,
-});
+const socket = io(
+  process.env.NODE_ENV === 'production'
+    ? 'https://videochat-rx5f.onrender.com'  // Production URL
+    : 'http://localhost:3000',  // Localhost URL for development
+  {
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+  }
+);
 
 socket.on('connect', () => console.log('Connected to server:', socket.id));
 socket.on('disconnect', () => console.log('Disconnected from server'));

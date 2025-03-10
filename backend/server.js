@@ -1,64 +1,60 @@
+// Updated server.js (Backend)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
-
 const io = new Server(server, {
     cors: {
-        origin: 'http://localhost:5173',
-        methods: ['GET', 'POST'],
-        credentials: true,
-    },
+        origin: '*',
+        methods: ['GET', 'POST']
+    }
 });
+
+app.use(cors());
 
 const users = {};
 
-io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+io.on('connection', socket => {
+    console.log(`User connected: ${socket.id}`);
 
-    socket.on('register', (userId) => {
+    socket.on('register', userId => {
         users[userId] = socket.id;
-        console.log(`User ${userId} registered with socket ${socket.id}`);
+        console.log(`User registered: ${userId} -> ${socket.id}`);
     });
 
     socket.on('call', ({ from, to, offer }) => {
-        console.log(`Call from ${from} to ${to}`);
-        const targetSocketId = users[to];
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('incoming-call', { from, offer });
-        } else {
-            io.to(users[from]).emit('call-error', 'User not found');
+        const recipientSocket = users[to];
+        if (recipientSocket) {
+            io.to(recipientSocket).emit('incoming-call', { from, offer });
         }
     });
 
     socket.on('answer', ({ to, answer }) => {
-        const targetSocketId = users[to];
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('call-answered', { answer });
+        const recipientSocket = users[to];
+        if (recipientSocket) {
+            io.to(recipientSocket).emit('call-answered', { answer });
         }
     });
 
     socket.on('ice-candidate', ({ to, candidate }) => {
-        const targetSocketId = users[to];
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('ice-candidate', { candidate });
+        const recipientSocket = users[to];
+        if (recipientSocket) {
+            io.to(recipientSocket).emit('ice-candidate', { candidate });
         }
     });
 
     socket.on('disconnect', () => {
-        for (const userId in users) {
+        Object.keys(users).forEach(userId => {
             if (users[userId] === socket.id) {
                 delete users[userId];
-                console.log(`User ${userId} disconnected`);
-                break;
             }
-        }
+        });
+        console.log(`User disconnected: ${socket.id}`);
     });
 });
 
-server.listen(process.env.PORT || 3000, () => {
-    console.log('Server running on port', process.env.PORT || 3000);
-});
-
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

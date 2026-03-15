@@ -2,16 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 import './App.css';
 
-// Socket.IO connection
-const socket = io(
-  process.env.NODE_ENV === 'production'
-    ? 'https://videochat-rx5f.onrender.com'
-    : 'http://localhost:3000',
-  {
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-  }
-);
+// Socket.IO connection using environment variables
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+
+const socket = io(SOCKET_URL, {
+  transports: ['websocket', 'polling'],
+  reconnection: true,
+});
 
 socket.on('connect', () => console.log('Connected to server:', socket.id));
 socket.on('disconnect', () => console.log('Disconnected from server'));
@@ -21,6 +18,7 @@ function App() {
   const [remoteId, setRemoteId] = useState('');
   const [isCalling, setIsCalling] = useState(false);
   const [inCall, setInCall] = useState(false); // New state to track active call
+  const [mediaError, setMediaError] = useState(''); // New state for media errors
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
@@ -42,6 +40,7 @@ function App() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStreamRef.current = stream;
+        setMediaError(''); // clear any previous errors
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
           localVideoRef.current.play().catch((err) =>
@@ -50,6 +49,9 @@ function App() {
         }
       } catch (err) {
         console.error('Error accessing media devices:', err);
+        setMediaError(
+          'Could not access camera/microphone. Please ensure permissions are granted.'
+        );
       }
     }
 
@@ -62,15 +64,21 @@ function App() {
       peerConnectionRef.current.close();
     }
 
-    peerConnectionRef.current = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
-      ],
-    });
+    // Build ICE Servers array from environment variables
+    const iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
+
+    if (import.meta.env.VITE_TURN_URL) {
+      iceServers.push({
+        urls: import.meta.env.VITE_TURN_URL,
+        username: import.meta.env.VITE_TURN_USERNAME,
+        credential: import.meta.env.VITE_TURN_CREDENTIAL,
+      });
+    }
+
+    peerConnectionRef.current = new RTCPeerConnection({ iceServers });
 
     localStreamRef.current?.getTracks().forEach((track) => {
       peerConnectionRef.current.addTrack(track, localStreamRef.current);
@@ -197,6 +205,7 @@ function App() {
   return (
     <div className="app">
       <h1>Video Call App</h1>
+      {mediaError && <div className="error-banner" style={{background: '#ff4d4d', color: 'white', padding: '10px', marginBottom: '10px', borderRadius: '4px'}}>{mediaError}</div>}
       <div className="controls">
         <input
           type="text"

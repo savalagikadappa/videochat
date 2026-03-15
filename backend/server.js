@@ -1,28 +1,59 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const path = require('path');
+const cors = require('cors');
+const { createAdapter } = require('@socket.io/redis-adapter');
+const { createClient } = require('redis');
 
 const app = express();
 const server = http.createServer(app);
+
+// Environment variables
+const PORT = process.env.PORT || 3000;
+const FRONTEND_URL = process.env.FRONTEND_URL || '*';
+const REDIS_URL = process.env.REDIS_URL || null;
+
+// Allow CORS for Express HTTP routes (if any)
+app.use(cors({
+    origin: FRONTEND_URL === '*' ? '*' : FRONTEND_URL.split(','),
+    methods: ['GET', 'POST']
+}));
+
+// Configure Socket.IO with restrictive CORS
 const io = new Server(server, {
     cors: {
-        origin: '*', // Adjust this in production for security
+        origin: FRONTEND_URL === '*' ? '*' : FRONTEND_URL.split(','),
         methods: ['GET', 'POST'],
     },
 });
 
-const PORT = process.env.PORT || 3000;
+// Setup Redis Adapter if REDIS_URL is provided (for scaling across multiple Node instances)
+if (REDIS_URL) {
+    console.log('Redis URL found, configuring Redis adapter for Socket.IO...');
+    const pubClient = createClient({ url: REDIS_URL });
+    const subClient = pubClient.duplicate();
 
-// Serve static files from the React app's build folder
-app.use(express.static(path.join(__dirname, 'build')));
+    Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
+        io.adapter(createAdapter(pubClient, subClient));
+        console.log('Successfully connected to Redis and configured Socket.IO adapter.');
+    }).catch(err => {
+        console.error('Failed to connect to Redis:', err);
+    });
+}
 
-// Handle all routes by serving the React app
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'build', 'index.html'));
+/**
+ * Handle basic health check route instead of serving React app
+ * Vercel or your frontend host will handle serving the static React files
+ */
+app.get('/', (req, res) => {
+    res.send('Videochat signaling server is running');
 });
 
 // Store user ID to socket ID mapping
+// Note: In a fully distributed Redis setup, this purely memory-based 'users' object 
+// might need to be replaced with a Redis HSET depending on exact room semantics.
+// However, the Redis adapter natively handles broadcasting to specific socket IDs across instances.
 const users = {};
 
 io.on('connection', (socket) => {
@@ -38,7 +69,8 @@ io.on('connection', (socket) => {
         if (targetSocketId) {
             io.to(targetSocketId).emit('incoming-call', { from, offer });
         } else {
-            io.to(users[from]).emit('call-error', 'User not found or offline');
+            // Emitting back to the caller using their socket ID if target not found locally
+            socket.emit('call-error', 'User not found or offline');
         }
     });
 
